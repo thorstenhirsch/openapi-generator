@@ -2794,7 +2794,13 @@ public class DefaultCodegen implements CodegenConfig {
                 addImport(composed, refSchema, m, modelName);
 
                 if (allDefinitions != null && refSchema != null) {
-                    if (allParents.contains(ref) && supportsMultipleInheritance) {
+                    // Inline properties from oneOf wrapper schemas (cannot be used as parent classes)
+                    if (ModelUtils.isOneOfWrapperSchema(refSchema)) {
+                        Map<String, Schema> newProperties = new LinkedHashMap<>();
+                        addProperties(newProperties, required, refSchema, new HashSet<>());
+                        mergeProperties(properties, newProperties);
+                        addProperties(allProperties, allRequired, refSchema, new HashSet<>());
+                    } else if (allParents.contains(ref) && supportsMultipleInheritance) {
                         // multiple inheritance
                         addProperties(allProperties, allRequired, refSchema, new HashSet<>());
                     } else if (parentName != null && parentName.equals(ref) && supportsInheritance) {
@@ -3155,6 +3161,15 @@ public class DefaultCodegen implements CodegenConfig {
 
         // remove duplicated properties
         m.removeAllDuplicatedProperty();
+
+        // Mark inherited readonly properties for template to use setter instead of direct field access
+        if (m.parent != null && m.readOnlyVars != null) {
+            for (CodegenProperty roVar : m.readOnlyVars) {
+                if (!Boolean.TRUE.equals(roVar.isOverridden)) {
+                    roVar.vendorExtensions.put("x-is-inherited-readonly", Boolean.TRUE);
+                }
+            }
+        }
 
         // set isDiscriminator on the discriminator property
         if (m.discriminator != null) {
